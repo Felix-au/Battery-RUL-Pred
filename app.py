@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 
@@ -47,32 +47,64 @@ if uploaded_file:
         X_scaled = scaler.fit_transform(X)
 
         # --------------------------
-        # Evaluate all models
+        # Model Selection
         # --------------------------
-        results = []
-        st.subheader("📊 Model Performance")
+        selected_models = st.multiselect(
+            "Select Models to Evaluate",
+            list(models.keys()),
+            default=[]  # none selected by default
+        )
 
-        for name, model in models.items():
-            y_pred = model.predict(X_scaled)
-            rmse = np.sqrt(mean_squared_error(y, y_pred))
-            r2 = r2_score(y, y_pred)
-            results.append((name, rmse, r2))
+        if selected_models:
+            results = []
+            st.subheader("📊 Model Performance")
 
-            # Plot actual vs predicted
-            st.write(f"### {name}")
-            fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(y.values[:100], label="Actual RUL", marker="o")
-            ax.plot(y_pred[:100], label=f"Predicted RUL - {name}", marker="x")
-            ax.set_title(f"{name}: Actual vs Predicted RUL")
-            ax.set_xlabel("Sample Index")
-            ax.set_ylabel("Remaining Useful Life")
-            ax.legend()
-            ax.grid(True)
-            st.pyplot(fig)
+            for name in selected_models:
+                model = models[name]
+                y_pred = model.predict(X_scaled)
+                rmse = np.sqrt(mean_squared_error(y, y_pred))
+                r2 = r2_score(y, y_pred)
+                results.append((name, rmse, r2))
 
-        # --------------------------
-        # Show comparison table
-        # --------------------------
-        results_df = pd.DataFrame(results, columns=["Model", "RMSE", "R² Score"])
-        st.subheader("📌 Final Comparison")
-        st.dataframe(results_df.sort_values(by="RMSE"))
+                # Interactive Plot (first 100 samples)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    y=y.values[:100], mode="lines+markers", name="Actual RUL"
+                ))
+                fig.add_trace(go.Scatter(
+                    y=y_pred[:100], mode="lines+markers", name=f"Predicted RUL - {name}"
+                ))
+                fig.update_layout(
+                    title=f"{name}: Actual vs Predicted RUL",
+                    xaxis_title="Sample Index",
+                    yaxis_title="Remaining Useful Life",
+                    hovermode="x unified"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            # --------------------------
+            # Show comparison table
+            # --------------------------
+            results_df = pd.DataFrame(results, columns=["Model", "RMSE", "R² Score"])
+            results_df = results_df.sort_values(by=["RMSE", "R² Score"], ascending=[True, False])
+
+            st.subheader("📌 Final Comparison")
+            st.dataframe(results_df)
+
+            # Highlight best model
+            best_model = results_df.iloc[0]
+            st.success(f"🏆 Best Model: **{best_model['Model']}** "
+                       f"(RMSE: {best_model['RMSE']:.2f}, R²: {best_model['R² Score']:.2f})")
+
+            # --------------------------
+            # Download Results
+            # --------------------------
+            csv = results_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Download Results as CSV",
+                data=csv,
+                file_name="model_comparison_results.csv",
+                mime="text/csv",
+            )
+        else:
+            st.info("ℹ️ Please select at least one model to evaluate.")
